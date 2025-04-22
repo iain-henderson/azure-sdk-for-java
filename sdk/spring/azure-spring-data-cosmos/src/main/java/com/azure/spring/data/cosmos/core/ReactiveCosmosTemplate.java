@@ -970,6 +970,10 @@ public class ReactiveCosmosTemplate implements ReactiveCosmosOperations, Applica
         options.setMaxDegreeOfParallelism(this.maxDegreeOfParallelism);
         options.setMaxBufferedItemCount(this.maxBufferedItemCount);
         options.setResponseContinuationTokenLimitInKb(this.responseContinuationTokenLimitInKb);
+
+        Optional<Object> partitionKeyValue = getPartitionKeyValue(querySpec, domainType);
+        partitionKeyValue.ifPresent(o -> options.setPartitionKey(new PartitionKey(o)));
+
         return this.getCosmosAsyncClient().getDatabase(this.getDatabaseName())
                    .getContainer(containerName)
                    .queryItems(querySpec, options, JsonNode.class)
@@ -985,6 +989,19 @@ public class ReactiveCosmosTemplate implements ReactiveCosmosOperations, Applica
                    .onErrorResume(throwable ->
                                       CosmosExceptionUtils.exceptionHandler("Failed to find items", throwable,
                                           this.responseDiagnosticsProcessor));
+    }
+
+    private Optional<Object> getPartitionKeyValue(SqlQuerySpec sqlQuerySpec, Class<?> domainType) {
+        CosmosEntityInformation<?, ?> instance = CosmosEntityInformation.getInstance(domainType);
+        String partitionKeyFieldName = instance.getPartitionKeyFieldName();
+        if (partitionKeyFieldName != null && !partitionKeyFieldName.isEmpty()) {
+            for (SqlParameter param : sqlQuerySpec.getParameters()) {
+                if (param.getName().equalsIgnoreCase(partitionKeyFieldName)) {
+                    return Optional.of(param.getValue(domainType));
+                }
+            }
+        }
+        return Optional.empty();
     }
 
     private Mono<Long> getNumericValue(SqlQuerySpec querySpec, String containerName) {

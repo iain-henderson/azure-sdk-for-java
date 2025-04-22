@@ -6,6 +6,8 @@ package com.azure.spring.data.cosmos.core;
 import com.azure.cosmos.CosmosAsyncClient;
 import com.azure.cosmos.CosmosClientBuilder;
 import com.azure.cosmos.models.PartitionKey;
+import com.azure.cosmos.models.SqlParameter;
+import com.azure.cosmos.models.SqlQuerySpec;
 import com.azure.spring.data.cosmos.CosmosFactory;
 import com.azure.spring.data.cosmos.IntegrationTestCollectionManager;
 import com.azure.spring.data.cosmos.common.PageTestUtils;
@@ -418,5 +420,24 @@ public class CosmosTemplatePartitionIT {
             .paginationQuery(queryIgnoreCase, PartitionPerson.class, containerName);
         assertThat(pageIgnoreCase.getContent().size()).isEqualTo(1);
         PageTestUtils.validateLastPage(pageIgnoreCase, PAGE_SIZE_2);
+    }
+
+    @Test
+    public void testRunQueryWithPartition() {
+        String queryText = "SELECT * FROM c WHERE " + PROPERTY_ZIP_CODE + " = @" + PROPERTY_ZIP_CODE;
+        SqlParameter sqlParameter = new SqlParameter(PROPERTY_ZIP_CODE, ZIP_CODE);
+        SqlQuerySpec querySpec = new SqlQuerySpec(queryText, sqlParameter);
+        List<PartitionPerson> result = TestUtils.toList(cosmosTemplate.runQuery(querySpec, PartitionPerson.class, PartitionPerson.class));
+
+        assertThat(result.size()).isEqualTo(1);
+        assertEquals(TEST_PERSON, result.get(0));
+
+        queryText = "SELECT * FROM c WHERE " + PROPERTY_ID + " = @" + PROPERTY_ID;
+        sqlParameter = new SqlParameter(PROPERTY_ID, ID_1);
+        querySpec = new SqlQuerySpec(queryText, sqlParameter);
+        result = TestUtils.toList(cosmosTemplate.runQuery(querySpec, PartitionPerson.class, PartitionPerson.class));
+
+        assertThat(result.size()).isEqualTo(1);
+        assertEquals(TEST_PERSON, result.get(0));
     }
 }

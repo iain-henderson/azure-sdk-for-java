@@ -5,6 +5,8 @@ package com.azure.spring.data.cosmos.core;
 import com.azure.cosmos.CosmosAsyncClient;
 import com.azure.cosmos.CosmosClientBuilder;
 import com.azure.cosmos.models.PartitionKey;
+import com.azure.cosmos.models.SqlParameter;
+import com.azure.cosmos.models.SqlQuerySpec;
 import com.azure.spring.data.cosmos.CosmosFactory;
 import com.azure.spring.data.cosmos.ReactiveIntegrationTestCollectionManager;
 import com.azure.spring.data.cosmos.common.ResponseDiagnosticsTestUtils;
@@ -293,6 +295,23 @@ public class ReactiveCosmosTemplatePartitionIT {
         assertThat(responseDiagnosticsTestUtils.getCosmosDiagnostics()).isNotNull();
         Assertions.assertThat(responseDiagnosticsTestUtils.getCosmosResponseStatistics()).isNotNull();
         Assertions.assertThat(responseDiagnosticsTestUtils.getCosmosResponseStatistics().getRequestCharge()).isGreaterThan(0);
+    }
+
+    @Test
+    public void testRunQueryWithPartition() {
+        String queryText = "SELECT * FROM c WHERE " + TestConstants.PROPERTY_ZIP_CODE + " = @" + TestConstants.PROPERTY_ZIP_CODE;
+        SqlParameter sqlParameter = new SqlParameter(TestConstants.PROPERTY_ZIP_CODE, TestConstants.ZIP_CODE);
+        SqlQuerySpec querySpec = new SqlQuerySpec(queryText, sqlParameter);
+        Flux<PartitionPerson> partitionPersonFlux = cosmosTemplate.runQuery(querySpec, PartitionPerson.class, PartitionPerson.class);
+        StepVerifier.create(partitionPersonFlux).consumeNextWith(actual -> {
+            Assert.assertEquals(actual.getFirstName(), TEST_PERSON.getFirstName());
+            Assert.assertEquals(actual.getZipCode(), TEST_PERSON.getZipCode());
+        }).verifyComplete();
+
+        assertThat(responseDiagnosticsTestUtils.getCosmosDiagnostics()).isNotNull();
+        Assertions.assertThat(responseDiagnosticsTestUtils.getCosmosResponseStatistics()).isNotNull();
+        Assertions.assertThat(responseDiagnosticsTestUtils.getCosmosResponseStatistics().getRequestCharge()).isGreaterThan(0);
+
     }
 }
 

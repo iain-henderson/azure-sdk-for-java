@@ -1191,7 +1191,7 @@ public class CosmosTemplate implements CosmosOperations, ApplicationContextAware
     @Override
     public <T> Iterable<T> runQuery(SqlQuerySpec querySpec, Sort sort, Class<?> domainType, Class<T> returnType) {
         querySpec = NativeQueryGenerator.getInstance().generateSortedQuery(querySpec, sort);
-        return getJsonNodeFluxFromQuerySpec(getContainerName(domainType), querySpec)
+        return getJsonNodeFluxFromQuerySpec(getContainerName(domainType), domainType, querySpec)
             .map(jsonNode -> emitOnLoadEventAndConvertToDomainObject(returnType, getContainerName(domainType), jsonNode))
             .collectList()
             .block();
@@ -1274,7 +1274,7 @@ public class CosmosTemplate implements CosmosOperations, ApplicationContextAware
     }
 
     private Flux<JsonNode> getJsonNodeFluxFromQuerySpec(
-        @NonNull String containerName, SqlQuerySpec sqlQuerySpec) {
+        @NonNull String containerName, @NonNull Class<?> domainType, SqlQuerySpec sqlQuerySpec) {
         final CosmosQueryRequestOptions cosmosQueryRequestOptions = new CosmosQueryRequestOptions();
         cosmosQueryRequestOptions.setQueryMetricsEnabled(this.queryMetricsEnabled);
         cosmosQueryRequestOptions.setIndexMetricsEnabled(this.indexMetricsEnabled);
@@ -1282,6 +1282,9 @@ public class CosmosTemplate implements CosmosOperations, ApplicationContextAware
         cosmosQueryRequestOptions.setMaxBufferedItemCount(this.maxBufferedItemCount);
         cosmosQueryRequestOptions.setResponseContinuationTokenLimitInKb(this.responseContinuationTokenLimitInKb);
         containerName = getContainerNameOverride(containerName);
+
+        Optional<Object> partitionKeyValue = getPartitionKeyValue(sqlQuerySpec, domainType);
+        partitionKeyValue.ifPresent(o -> cosmosQueryRequestOptions.setPartitionKey(new PartitionKey(o)));
 
         return this.getCosmosAsyncClient()
             .getDatabase(this.getDatabaseName())
@@ -1298,6 +1301,19 @@ public class CosmosTemplate implements CosmosOperations, ApplicationContextAware
             .onErrorResume(throwable ->
                 CosmosExceptionUtils.exceptionHandler("Failed to find items", throwable,
                     this.responseDiagnosticsProcessor));
+    }
+
+    private Optional<Object> getPartitionKeyValue(SqlQuerySpec sqlQuerySpec, Class<?> domainType) {
+        CosmosEntityInformation<?, ?> instance = CosmosEntityInformation.getInstance(domainType);
+        String partitionKeyFieldName = instance.getPartitionKeyFieldName();
+        if (partitionKeyFieldName != null && !partitionKeyFieldName.isEmpty()) {
+            for (SqlParameter param : sqlQuerySpec.getParameters()) {
+                if (param.getName().equalsIgnoreCase(partitionKeyFieldName)) {
+                    return Optional.of(param.getValue(domainType));
+                }
+            }
+        }
+        return Optional.empty();
     }
 
     private <T> Iterable<T> findItems(@NonNull CosmosQuery query,
